@@ -31,7 +31,7 @@ const fmtDate = (d) => { try { return format(new Date(d), 'dd/MM/yyyy') } catch 
 // ─── EXCEL EXPORT ─────────────────────────────────────────────────────────────
 // Uses ExcelJS (npm install exceljs) for image support in browser
 // Falls back to xlsx-js-style if ExcelJS unavailable
-export const exportToExcel = async (progressData, totalData, projectName, dateFrom, dateTo, extraInfo = {}) => {
+export const exportToExcel = async (progressData, totalData, projectName, dateFrom, dateTo, extraInfo = {}, isMonthly = false) => {
   const logo = await loadLogo()
 
   // ── Try ExcelJS (supports images in browser) ──────────────────────────────
@@ -39,14 +39,14 @@ export const exportToExcel = async (progressData, totalData, projectName, dateFr
   try { ExcelJS = (await import('exceljs')).default ?? (await import('exceljs')) } catch { ExcelJS = null }
 
   if (ExcelJS) {
-    await _exportToExcelJS(ExcelJS, logo, progressData, totalData, projectName, dateFrom, dateTo, extraInfo)
+    await _exportToExcelJS(ExcelJS, logo, progressData, totalData, projectName, dateFrom, dateTo, extraInfo, isMonthly)
   } else {
-    _exportToXlsxStyle(logo, progressData, totalData, projectName, dateFrom, dateTo, extraInfo)
+    _exportToXlsxStyle(logo, progressData, totalData, projectName, dateFrom, dateTo, extraInfo, isMonthly)
   }
 }
 
 // ── ExcelJS implementation (with image) ──────────────────────────────────────
-async function _exportToExcelJS(ExcelJS, logo, progressData, totalData, projectName, dateFrom, dateTo, extraInfo) {
+async function _exportToExcelJS(ExcelJS, logo, progressData, totalData, projectName, dateFrom, dateTo, extraInfo, isMonthly = false) {
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet('Rekap Progress')
 
@@ -90,7 +90,7 @@ async function _exportToExcelJS(ExcelJS, logo, progressData, totalData, projectN
 
   // ── TITLE row 2, cols A–M ─────────────────────────────────────────────────
   ws.mergeCells(2, 1, 5, 13)
-  sc(2, 1, 'REKAPITULASI LAPORAN MINGGUAN', {
+  sc(2, 1, isMonthly ? 'REKAPITULASI LAPORAN BULANAN' : 'REKAPITULASI LAPORAN MINGGUAN', {
     font: { name:'Arial', size:20, bold:true },
     alignment: { horizontal:'center', vertical:'middle' },
   })
@@ -237,13 +237,13 @@ async function _exportToExcelJS(ExcelJS, logo, progressData, totalData, projectN
   const url  = URL.createObjectURL(blob)
   const a    = document.createElement('a')
   a.href     = url
-  a.download = `Laporan_Mingguan_${format(new Date(),'yyyyMMdd_HHmmss')}.xlsx`
+  a.download = `${isMonthly ? 'Laporan_Bulanan' : 'Laporan_Mingguan'}_${format(new Date(),'yyyyMMdd_HHmmss')}.xlsx`
   a.click()
   URL.revokeObjectURL(url)
 }
 
 // ── xlsx-js-style fallback (no image support in browser) ─────────────────────
-function _exportToXlsxStyle(logo, progressData, totalData, projectName, dateFrom, dateTo, extraInfo) {
+function _exportToXlsxStyle(logo, progressData, totalData, projectName, dateFrom, dateTo, extraInfo, isMonthly = false) {
   let XS
   try { XS = require('xlsx-js-style') } catch { XS = XLSX }
 
@@ -268,7 +268,7 @@ function _exportToXlsxStyle(logo, progressData, totalData, projectName, dateFrom
   const DB='double', TH='thin', HR='hair'
   const HDR_BG='FFDCE6F1', LGRAY='FFE8E8E8', DGRAY='FFD0D0D0', ALT='FFF5F5F5'
 
-  C(1,0,'REKAPITULASI LAPORAN MINGGUAN',S({bold:true,sz:20,h:'center',v:'center'}))
+  C(1,0,isMonthly ? 'REKAPITULASI LAPORAN BULANAN' : 'REKAPITULASI LAPORAN MINGGUAN',S({bold:true,sz:20,h:'center',v:'center'}))
   M(1,0,4,12)
   C(4,13,'ABJ/CONS/FM-033 A Rev.04\nTgl Berlaku : 23 Februari 2025',S({sz:10,h:'center',v:'top',wrap:true}))
   C(5,0,'',{}); M(5,0,5,13)
@@ -368,12 +368,12 @@ function _exportToXlsxStyle(logo, progressData, totalData, projectName, dateFrom
   rh[tuR2]=15;rh[ppR2]=20;rh[btR]=8
   ws['!rows']=Array.from({length:sigR2+11},(_,i)=>rh[i]?{hpt:rh[i]}:{})
   XS.utils.book_append_sheet(wb,ws,'Rekap Progress')
-  XS.writeFile(wb,`Laporan_Mingguan_${format(new Date(),'yyyyMMdd_HHmmss')}.xlsx`)
+  XS.writeFile(wb,`${isMonthly ? 'Laporan_Bulanan' : 'Laporan_Mingguan'}_${format(new Date(),'yyyyMMdd_HHmmss')}.xlsx`)
 }
 
 
 // ─── PDF EXPORT — PORTRAIT A4 ─────────────────────────────────────────────────
-export const exportToPDF = async (progressData, totalData, projectName, dateFrom, dateTo, extraInfo = {}) => {
+export const exportToPDF = async (progressData, totalData, projectName, dateFrom, dateTo, extraInfo = {}, isMonthly = false) => {
   const logo = await loadLogo()
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
@@ -403,7 +403,7 @@ export const exportToPDF = async (progressData, totalData, projectName, dateFrom
 
     // Title — centered across full width
     f(true, 13)
-    doc.text('REKAPITULASI LAPORAN MINGGUAN', ML + UW / 2, 18, { align: 'center' })
+    doc.text(isMonthly ? 'REKAPITULASI LAPORAN BULANAN' : 'REKAPITULASI LAPORAN MINGGUAN', ML + UW / 2, 18, { align: 'center' })
 
     // Thick + thin separator — below the right-column block
     const sepY = dcY + 8
@@ -574,12 +574,12 @@ export const exportToPDF = async (progressData, totalData, projectName, dateFrom
     if (title) doc.text(title, cx, sy + 35, { align:'center' })
   })
 
-  doc.save(`Laporan_Mingguan_${format(new Date(),'yyyyMMdd_HHmmss')}.pdf`)
+  doc.save(`${isMonthly ? 'Laporan_Bulanan' : 'Laporan_Mingguan'}_${format(new Date(),'yyyyMMdd_HHmmss')}.pdf`)
 }
 
 // ─── WORD EXPORT (.docx) ──────────────────────────────────────────────────────
 // Requires: npm install docx
-export const exportToWord = async (progressData, totalData, projectName, dateFrom, dateTo, extraInfo = {}) => {
+export const exportToWord = async (progressData, totalData, projectName, dateFrom, dateTo, extraInfo = {}, isMonthly = false) => {
   const logo = await loadLogo()
 
   const {
@@ -743,7 +743,7 @@ export const exportToWord = async (progressData, totalData, projectName, dateFro
     rows: [new TableRow({ children:[
       // Left: Title
       new TableCell({
-        children: [para(txt('REKAPITULASI LAPORAN MINGGUAN',{bold:true,sz:26}),AlignmentType.CENTER)],
+        children: [para(txt(isMonthly ? 'REKAPITULASI LAPORAN BULANAN' : 'REKAPITULASI LAPORAN MINGGUAN',{bold:true,sz:26}),AlignmentType.CENTER)],
         borders: noB, shading:shade('FFFFFF'), verticalAlign:VerticalAlign.CENTER,
       }),
       // Right: Logo stacked above doc code
@@ -881,13 +881,13 @@ export const exportToWord = async (progressData, totalData, projectName, dateFro
   const url  = URL.createObjectURL(blob)
   const a    = document.createElement('a')
   a.href     = url
-  a.download = `Laporan_Mingguan_${format(new Date(),'yyyyMMdd_HHmmss')}.docx`
+  a.download = `${isMonthly ? 'Laporan_Bulanan' : 'Laporan_Mingguan'}_${format(new Date(),'yyyyMMdd_HHmmss')}.docx`
   a.click()
   URL.revokeObjectURL(url)
 }
 
 // ─── PRINT ────────────────────────────────────────────────────────────────────
-export const printReport = async (progressData, totalData, projectName, dateFrom, dateTo, extraInfo = {}) => {
+export const printReport = async (progressData, totalData, projectName, dateFrom, dateTo, extraInfo = {}, isMonthly = false) => {
   const logo = await loadLogo()
   const pw   = window.open('', '', 'width=900,height=1200')
 
@@ -906,7 +906,7 @@ export const printReport = async (progressData, totalData, projectName, dateFrom
   ]
 
   const html = `<!DOCTYPE html><html><head>
-<title>Rekapitulasi Laporan Mingguan</title>
+<title>${isMonthly ? 'Rekapitulasi Laporan Bulanan' : 'Rekapitulasi Laporan Mingguan'}</title>
 <style>
   @page { size:A4 portrait; margin:15mm; }
   * { margin:0; padding:0; box-sizing:border-box; }
@@ -960,7 +960,7 @@ export const printReport = async (progressData, totalData, projectName, dateFrom
 </style></head><body>
 
 <div class="hdr">
-  <h1>REKAPITULASI LAPORAN MINGGUAN</h1>
+  <h1>${isMonthly ? 'REKAPITULASI LAPORAN BULANAN' : 'REKAPITULASI LAPORAN MINGGUAN'}</h1>
   <div class="hdr-right">
     <div class="hdr-logo">${logoHtml}</div>
     <div class="doc-code">ABJ/CONS/FM-033 A Rev.04<br>Tgl Berlaku : 23 Februari 2025</div>
