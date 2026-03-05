@@ -25,19 +25,16 @@ const pool = new Pool({
 // Middleware untuk Basic Auth verification
 const verifyAuth = (req, res, next) => {
   const authHeader = req.headers.authorization;
-  
   if (!authHeader || !authHeader.startsWith('Basic ')) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
-  
-  // Anda bisa menambahkan validasi credentials di sini jika diperlukan
   next();
 };
 
 // Progress Query Endpoint
 app.post('/api/query/progress', verifyAuth, async (req, res) => {
   const { projectId, dateFrom, dateTo } = req.body;
-  
+
   const query = `
     WITH total AS (
       SELECT SUM(linenetamt) AS total_amount
@@ -189,93 +186,84 @@ app.post('/api/query/progress', verifyAuth, async (req, res) => {
 // Total Query Endpoint
 app.post('/api/query/total', verifyAuth, async (req, res) => {
   const { projectId, dateFrom, dateTo } = req.body;
-  
+
   const query = `
-    WITH progress_data AS (
-      WITH total AS (
-        SELECT SUM(linenetamt) AS total_amount
-        FROM robprj_orab ro
-        WHERE ro.c_order_id IN (
-          SELECT co2.c_order_id
-          FROM c_order co2
-          WHERE co2.c_project_id = $1
-            AND co2.issotrx = 'Y'
-        )
+    WITH total AS (
+      SELECT SUM(linenetamt) AS total_amount
+      FROM robprj_orab ro
+      WHERE ro.c_order_id IN (
+        SELECT co2.c_order_id
+        FROM c_order co2
+        WHERE co2.c_project_id = $1
+          AND co2.issotrx = 'Y'
       )
+    ),
+
+    progress_data AS (
       SELECT
-        ROW_NUMBER() OVER (ORDER BY ro.line) AS "no",
-        ro.col2 AS "col2",
-        cu."name" AS "satuan",
-        CASE WHEN ro.qty = 0 THEN '' ELSE TO_CHAR(ro.qty, 'FM999990.########') END AS "boq",
+        ROW_NUMBER() OVER (ORDER BY ro.line) AS no,
+        ro.col2,
+        cu.name AS satuan,
         CASE
-          WHEN ROUND((ro.linenetamt / total.total_amount) * 100, 4) = 0 THEN 0
-          ELSE ROUND((ro.linenetamt / total.total_amount) * 100, 4)
-        END AS "bobot",
-        CASE
-          WHEN ROUND((COALESCE(real_minggu_ini.total_qty_actual, 0)
-            * ro.priceactual / NULLIF(ro.linenetamt, 0)
-            * (ro.linenetamt / NULLIF(total.total_amount, 0))
-            * CASE WHEN ro.ismaterial = 'Y' THEN
-                COALESCE(CASE progress_minggu_ini.ket_progress
-                  WHEN 'PTV' THEN 20 WHEN 'MOS' THEN 80 WHEN 'INS' THEN 95 WHEN 'TC' THEN 100 ELSE 0 END,0)
-              ELSE 100 END), 4) = 0
-          THEN 0 ELSE ROUND((COALESCE(real_minggu_ini.total_qty_actual, 0)
-            * ro.priceactual / NULLIF(ro.linenetamt, 0)
-            * (ro.linenetamt / NULLIF(total.total_amount, 0))
-            * CASE WHEN ro.ismaterial = 'Y' THEN
-                COALESCE(CASE progress_minggu_ini.ket_progress
-                  WHEN 'PTV' THEN 20 WHEN 'MOS' THEN 80 WHEN 'INS' THEN 95 WHEN 'TC' THEN 100 ELSE 0 END,0)
-              ELSE 100 END),4)
-        END AS "thisweek",
-        CASE
-          WHEN ROUND((COALESCE(real_kumulatif.total_qty_actual, 0)
-            * ro.priceactual / NULLIF(ro.linenetamt, 0)
-            * (ro.linenetamt / NULLIF(total.total_amount, 0))
-            * CASE WHEN ro.ismaterial = 'Y' THEN
-                COALESCE(CASE progress_kumulatif.ket_progress
-                  WHEN 'PTV' THEN 20 WHEN 'MOS' THEN 80 WHEN 'INS' THEN 95 WHEN 'TC' THEN 100 ELSE 0 END,0)
-              ELSE 100 END),4) = 0
-          THEN 0 ELSE ROUND((COALESCE(real_kumulatif.total_qty_actual, 0)
-            * ro.priceactual / NULLIF(ro.linenetamt, 0)
-            * (ro.linenetamt / NULLIF(total.total_amount, 0))
-            * CASE WHEN ro.ismaterial = 'Y' THEN
-                COALESCE(CASE progress_kumulatif.ket_progress
-                  WHEN 'PTV' THEN 20 WHEN 'MOS' THEN 80 WHEN 'INS' THEN 95 WHEN 'TC' THEN 100 ELSE 0 END,0)
-              ELSE 100 END),4)
-        END AS "cumlastweek",
-        CASE
-          WHEN ROUND(((COALESCE(real_kumulatif.total_qty_actual, 0) + COALESCE(real_minggu_ini.total_qty_actual, 0))
-            * ro.priceactual / NULLIF(ro.linenetamt, 0)
-            * (ro.linenetamt / NULLIF(total.total_amount, 0))
-            * CASE WHEN ro.ismaterial = 'Y' THEN
-                COALESCE(CASE WHEN progress_minggu_ini.ket_progress IS NOT NULL
-                  THEN CASE progress_minggu_ini.ket_progress
+          WHEN ro.qty = 0 THEN ''
+          ELSE TO_CHAR(ro.qty, 'FM999990.########')
+        END AS boq,
+
+        /* ================= BOBOT ================= */
+        (ro.linenetamt / NULLIF(total.total_amount,0)) * 100 AS bobot,
+
+        /* ================= THIS WEEK ================= */
+        (
+          COALESCE(real_minggu_ini.total_qty_actual,0)
+          * ro.priceactual / NULLIF(ro.linenetamt,0)
+          * (ro.linenetamt / NULLIF(total.total_amount,0))
+          * CASE WHEN ro.ismaterial = 'Y' THEN
+              COALESCE(CASE progress_minggu_ini.ket_progress
+                WHEN 'PTV' THEN 20 WHEN 'MOS' THEN 80 WHEN 'INS' THEN 95 WHEN 'TC' THEN 100 ELSE 0 END,0)
+            ELSE 100 END
+        ) AS thisweek,
+
+        /* ================= CUM LAST WEEK ================= */
+        (
+          COALESCE(real_kumulatif.total_qty_actual,0)
+          * ro.priceactual / NULLIF(ro.linenetamt,0)
+          * (ro.linenetamt / NULLIF(total.total_amount,0))
+          * CASE WHEN ro.ismaterial = 'Y' THEN
+              COALESCE(CASE progress_kumulatif.ket_progress
+                WHEN 'PTV' THEN 20 WHEN 'MOS' THEN 80 WHEN 'INS' THEN 95 WHEN 'TC' THEN 100 ELSE 0 END,0)
+            ELSE 100 END
+        ) AS cumlastweek,
+
+        /* ================= CUM THIS WEEK ================= */
+        (
+          (COALESCE(real_kumulatif.total_qty_actual,0) + COALESCE(real_minggu_ini.total_qty_actual,0))
+          * ro.priceactual / NULLIF(ro.linenetamt,0)
+          * (ro.linenetamt / NULLIF(total.total_amount,0))
+          * CASE WHEN ro.ismaterial = 'Y' THEN
+              COALESCE(CASE
+                WHEN progress_minggu_ini.ket_progress IS NOT NULL THEN
+                  CASE progress_minggu_ini.ket_progress
                     WHEN 'PTV' THEN 20 WHEN 'MOS' THEN 80 WHEN 'INS' THEN 95 WHEN 'TC' THEN 100 ELSE 0 END
-                  ELSE CASE progress_kumulatif.ket_progress
-                    WHEN 'PTV' THEN 20 WHEN 'MOS' THEN 80 WHEN 'INS' THEN 95 WHEN 'TC' THEN 100 ELSE 0 END END,0)
-              ELSE 100 END),4) = 0
-          THEN 0 ELSE ROUND(((COALESCE(real_kumulatif.total_qty_actual, 0) + COALESCE(real_minggu_ini.total_qty_actual, 0))
-            * ro.priceactual / NULLIF(ro.linenetamt, 0)
-            * (ro.linenetamt / NULLIF(total.total_amount, 0))
-            * CASE WHEN ro.ismaterial = 'Y' THEN
-                COALESCE(CASE WHEN progress_minggu_ini.ket_progress IS NOT NULL
-                  THEN CASE progress_minggu_ini.ket_progress
+                ELSE
+                  CASE progress_kumulatif.ket_progress
                     WHEN 'PTV' THEN 20 WHEN 'MOS' THEN 80 WHEN 'INS' THEN 95 WHEN 'TC' THEN 100 ELSE 0 END
-                  ELSE CASE progress_kumulatif.ket_progress
-                    WHEN 'PTV' THEN 20 WHEN 'MOS' THEN 80 WHEN 'INS' THEN 95 WHEN 'TC' THEN 100 ELSE 0 END END,0)
-              ELSE 100 END),4)
-        END AS "cumthisweek"
+              END,0)
+            ELSE 100 END
+        ) AS cumthisweek
+
       FROM robprj_orab ro
       LEFT JOIN c_uom cu ON ro.c_uom_id = cu.c_uom_id
       JOIN total ON 1=1
+
       LEFT JOIN LATERAL (
-        SELECT SUM(COALESCE(rp.qty, 0)) AS total_qty_actual
+        SELECT SUM(COALESCE(rp.qty,0)) AS total_qty_actual
         FROM robprj_parealisasi rp
         JOIN robprj_projectactivity pa ON rp.robprj_projectactivity_id = pa.robprj_projectactivity_id
         WHERE rp.wbscode = ro.wbscode
           AND pa.c_project_id = $1
           AND pa.activitydate BETWEEN $2 AND $3
       ) real_minggu_ini ON TRUE
+
       LEFT JOIN LATERAL (
         SELECT rp.ket_progress
         FROM robprj_parealisasi rp
@@ -286,14 +274,16 @@ app.post('/api/query/total', verifyAuth, async (req, res) => {
         ORDER BY pa.activitydate DESC
         LIMIT 1
       ) progress_minggu_ini ON TRUE
+
       LEFT JOIN LATERAL (
-        SELECT SUM(COALESCE(rp.qty, 0)) AS total_qty_actual
+        SELECT SUM(COALESCE(rp.qty,0)) AS total_qty_actual
         FROM robprj_parealisasi rp
         JOIN robprj_projectactivity pa ON rp.robprj_projectactivity_id = pa.robprj_projectactivity_id
         WHERE rp.wbscode = ro.wbscode
           AND pa.c_project_id = $1
           AND pa.activitydate < $2
       ) real_kumulatif ON TRUE
+
       LEFT JOIN LATERAL (
         SELECT rp.ket_progress
         FROM robprj_parealisasi rp
@@ -304,6 +294,7 @@ app.post('/api/query/total', verifyAuth, async (req, res) => {
         ORDER BY pa.activitydate DESC
         LIMIT 1
       ) progress_kumulatif ON TRUE
+
       WHERE ro.c_order_id IN (
         SELECT co2.c_order_id
         FROM c_order co2
@@ -311,11 +302,12 @@ app.post('/api/query/total', verifyAuth, async (req, res) => {
           AND co2.issotrx = 'Y'
       )
     )
+
     SELECT
-      TO_CHAR(CEIL(SUM(bobot)), 'FM999990.0000') || '%' AS totalbobot,
-      TO_CHAR(SUM(thisweek), 'FM999990.0000') || '%' AS totalthisweek,
-      TO_CHAR(SUM(cumlastweek), 'FM999990.0000') || '%' AS totalcumlastweek,
-      TO_CHAR(SUM(cumthisweek), 'FM999990.0000') || '%' AS totalcumthisweek
+      TO_CHAR(LEAST(ROUND(SUM(bobot),4),100),'FM999990.0000') || '%' AS totalbobot,
+      TO_CHAR(ROUND(SUM(thisweek),4),'FM999990.0000') || '%' AS totalthisweek,
+      TO_CHAR(ROUND(SUM(cumlastweek),4),'FM999990.0000') || '%' AS totalcumlastweek,
+      TO_CHAR(ROUND(SUM(cumthisweek),4),'FM999990.0000') || '%' AS totalcumthisweek
     FROM progress_data;
   `;
 
@@ -334,6 +326,13 @@ app.get('/health', (req, res) => {
 });
 
 // Start server
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`Backend server running on port ${port}`);
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Port ${port} sudah dipakai. Coba matikan proses lama.`);
+    process.exit(1);
+  }
 });
