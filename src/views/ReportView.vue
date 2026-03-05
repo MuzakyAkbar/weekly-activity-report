@@ -116,21 +116,14 @@
             </div>
 
             <div class="form-group">
-              <label>Bulan</label>
-              <select v-model="selectedMonth">
-                <option value="" disabled>Pilih Bulan</option>
-                <option v-for="(name, idx) in monthNames" :key="idx" :value="idx + 1">
-                  {{ name }}
-                </option>
-              </select>
+              <label>Tanggal Dari</label>
+              <input type="date" v-model="calFrom" @change="validateMonthlyDates" />
             </div>
 
             <div class="form-group">
-              <label>Tahun</label>
-              <select v-model="selectedYear">
-                <option value="" disabled>Pilih Tahun</option>
-                <option v-for="y in yearOptions" :key="y" :value="y">{{ y }}</option>
-              </select>
+              <label>Tanggal Sampai</label>
+              <input type="date" v-model="calTo" @change="validateMonthlyDates" />
+              <span v-if="monthlyDateError" class="date-error">{{ monthlyDateError }}</span>
             </div>
 
             <button
@@ -202,6 +195,9 @@ function switchTab(tab) {
   searchQuery.value = ''
   selectedProjectName.value = ''
   reportStore.selectedProject = null
+  calFrom.value = ''
+  calTo.value   = ''
+  monthlyDateError.value = ''
 }
 
 // ── Shared project search ────────────────────────────────────────────────────
@@ -249,30 +245,36 @@ watch(() => reportStore.projects, (list) => {
 }, { immediate: true })
 
 // ── Monthly filter ───────────────────────────────────────────────────────────
-const currentYear  = new Date().getFullYear()
-const selectedMonth = ref(new Date().getMonth() + 1)
-const selectedYear  = ref(currentYear)
+const calFrom = ref('')
+const calTo   = ref('')
+const monthlyDateError = ref('')
 
-const monthNames = [
-  'Januari','Februari','Maret','April','Mei','Juni',
-  'Juli','Agustus','September','Oktober','November','Desember'
-]
-const yearOptions = computed(() => {
-  const arr = []
-  for (let y = currentYear; y >= currentYear - 5; y--) arr.push(y)
-  return arr
-})
+const validateMonthlyDates = () => {
+  monthlyDateError.value = ''
+  if (!calFrom.value || !calTo.value) return
+  if (calTo.value < calFrom.value) {
+    monthlyDateError.value = 'Tanggal sampai tidak boleh kurang dari tanggal mulai'
+    return
+  }
+  const diff = (new Date(calTo.value) - new Date(calFrom.value)) / 86400000
+  if (diff > 30) {
+    monthlyDateError.value = 'Rentang tanggal tidak boleh lebih dari 31 hari'
+  }
+}
 
 // ── Date validation ──────────────────────────────────────────────────────────
 const dateError = ref('')
 
 const validateDates = () => {
-  if (reportStore.dateFrom && reportStore.dateTo) {
-    if (reportStore.dateTo < reportStore.dateFrom) {
-      dateError.value = 'Tanggal sampai tidak boleh kurang dari tanggal mulai'
-    } else {
-      dateError.value = ''
-    }
+  dateError.value = ''
+  if (!reportStore.dateFrom || !reportStore.dateTo) return
+  if (reportStore.dateTo < reportStore.dateFrom) {
+    dateError.value = 'Tanggal sampai tidak boleh kurang dari tanggal mulai'
+    return
+  }
+  const diff = (new Date(reportStore.dateTo) - new Date(reportStore.dateFrom)) / 86400000
+  if (diff > 6) {
+    dateError.value = 'Rentang tanggal tidak boleh lebih dari 7 hari'
   }
 }
 
@@ -281,17 +283,14 @@ const canGenerateWeekly  = computed(() =>
   reportStore.selectedProject && reportStore.dateFrom && reportStore.dateTo && !dateError.value
 )
 const canGenerateMonthly = computed(() =>
-  reportStore.selectedProject && selectedMonth.value && selectedYear.value
+  reportStore.selectedProject && calFrom.value && calTo.value && !monthlyDateError.value
 )
 
 // ── Generate ─────────────────────────────────────────────────────────────────
 const handleGenerate = async () => {
   if (activeTab.value === 'monthly') {
-    const y  = selectedYear.value
-    const m  = String(selectedMonth.value).padStart(2, '0')
-    const last = new Date(y, selectedMonth.value, 0).getDate()
-    reportStore.dateFrom = `${y}-${m}-01`
-    reportStore.dateTo   = `${y}-${m}-${String(last).padStart(2, '0')}`
+    reportStore.dateFrom = calFrom.value
+    reportStore.dateTo   = calTo.value
   }
   await reportStore.loadReportData()
 }
@@ -575,4 +574,5 @@ async function handleExport(type) {
   color: #c00;
   margin-left: 0.5rem;
 }
+
 </style>
