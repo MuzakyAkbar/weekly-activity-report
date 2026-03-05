@@ -1,6 +1,7 @@
 import axios from 'axios'
 
 const API_BASE_URL = '/api/openbravo/org.openbravo.service.json.jsonrest'
+const BACKEND_URL  = '/api/query'  // lewat Apache proxy juga
 
 // Konfigurasi Basic Auth
 let authConfig = {
@@ -69,7 +70,7 @@ export const fetchProjectActivities = async (projectId, dateFrom, dateTo) => {
 // Execute custom SQL query via backend
 export const executeProgressQuery = async (projectId, dateFrom, dateTo) => {
   try {
-    const response = await axios.post('http://localhost:3001/api/query/progress', {
+    const response = await axios.post(`${BACKEND_URL}/progress`, {
       projectId,
       dateFrom,
       dateTo
@@ -86,7 +87,7 @@ export const executeProgressQuery = async (projectId, dateFrom, dateTo) => {
 // Execute total query
 export const executeTotalQuery = async (projectId, dateFrom, dateTo) => {
   try {
-    const response = await axios.post('http://localhost:3001/api/query/total', {
+    const response = await axios.post(`${BACKEND_URL}/total`, {
       projectId,
       dateFrom,
       dateTo

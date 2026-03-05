@@ -13,10 +13,15 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      '/api': {
+      '/api/openbravo': {
         target: 'http://36.93.9.238:8080',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, '')
+      },
+      '/api/query': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/query/, '/api/query')
       }
     }
   }
