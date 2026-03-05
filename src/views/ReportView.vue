@@ -4,7 +4,7 @@
 
     <div v-else class="main-content">
       <header class="app-header">
-        <h1>Activity Report (DAR)</h1>
+        <h1>Activity Report</h1>
         <p class="subtitle">Sistem Monitoring Progress Pekerjaan</p>
       </header>
 
